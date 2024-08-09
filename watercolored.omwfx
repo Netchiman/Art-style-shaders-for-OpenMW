@@ -1,0 +1,163 @@
+
+uniform_bool uShaderEnabled {
+	default = true;
+	description = "Enable Watercolored shader.";
+	display_name = "Enable Shader";
+}
+
+uniform_bool uSkyDisabled {
+	default = false;
+	description = "Disable watercoloring of the sky. This might look better with extreme settings.";
+	display_name = "Disable Sky Shading";
+}
+
+uniform_bool uWaterDisabled {
+	default = false;
+	description = "Disable watercoloring of in-game water. This might look better with extreme settings.";
+	display_name = "Disable Water Shading";
+}
+
+uniform_float uDetailGrade {
+	default = 0.4;
+	min = 0.2;
+	max = 0.8;
+	step = 0.05;
+	description = "Controls the amount of blurring of larger areas. Higher values increase the crispness of textures.";
+	display_name = "Detail Grade";
+}
+
+uniform_float uDesaturationGrade {
+	default = 0.4;
+	min = 0.2;
+	max = 0.8;
+	step = 0.05;
+	description = "Controls the flow of colors toward edges. Higher values decreases saturation of large areas.";
+	display_name = "Desaturation Grade";
+}
+
+uniform_float uEdgeColorAmount {
+	default = 0.25;
+	min = 0.1;
+	max = 0.5;
+	step = 0.05;
+	description = "Controls the amount of edge saturation. Higher values increase the amount of saturated edges.";
+	display_name = "Edge Coloring Amount";
+}
+
+uniform_float uEdgeColorStrength {
+	default = 2.5;
+	min = 1.0;
+	max = 5.0;
+	step = 0.5;
+	description = "Controls the strength of edge saturation. Higher values increase the intensity of saturated edges.";
+	display_name = "Edge Coloring Strength";
+}
+
+fragment main {
+	omw_In vec2 omw_TexCoord;
+
+	void main() {
+		vec3 vScene = omw_GetLastShader(omw_TexCoord).rgb;
+
+		float pSobelHorizontal[9] = float[] (
+			1.0, 0.0, -1.0,
+			2.0, 0.0, -2.0,
+			1.0, 0.0, -1.0
+		);
+
+		float pSobelVertical[9] = float[] (
+			1.0, 2.0, 1.0,
+			0.0, 0.0, 0.0,
+			-1.0, -2.0, -1.0
+		);
+
+		float pGaussianWeights[13] = float[] (
+			0.001108,
+			0.004382,
+			0.013498,
+			0.032380,
+			0.060493,
+			0.088017,
+			0.099736,
+			0.088017,
+			0.060493,
+			0.032380,
+			0.013498,
+			0.004382,
+			0.001108
+		);
+
+		float vSkyMask = step(omw.far * 0.9999, omw_GetLinearDepth(omw_TexCoord));
+
+		float vWaterMask;
+		if (omw.isUnderwater) {
+			vWaterMask = step(omw.waterHeight * 1.01, omw_GetWorldPosFromUV(omw_TexCoord).z);
+		}
+		else {
+			vWaterMask = 1.0 - step(omw.waterHeight * 0.99, omw_GetWorldPosFromUV(omw_TexCoord).z);
+		}
+
+		vec2 vOffsets[9] = vec2[] (
+			vec2(-omw.rcpResolution.x, -omw.rcpResolution.y),
+			vec2(-omw.rcpResolution.x, 0.0),
+			vec2(-omw.rcpResolution.x, omw.rcpResolution.y),
+			vec2(0.0, -omw.rcpResolution.y),
+			vec2(0.0, 0.0),
+			vec2(0.0, omw.rcpResolution.y),
+			vec2(omw.rcpResolution.x, -omw.rcpResolution.y),
+			vec2(omw.rcpResolution.x, 0.0),
+			vec2(omw.rcpResolution.x, omw.rcpResolution.y)
+		);
+		vec3 vGrayscale;
+		vec3 vEdgesHorizontal;
+		vec3 vEdgesVertical;
+		for (int n = 0; n < 9; n++) {
+			vGrayscale = omw_GetLastShader(omw_TexCoord + vOffsets[n]).rgb;
+			vGrayscale = vec3(dot(vGrayscale, vec3(0.2126, 0.7152, 0.0722)));
+			vEdgesHorizontal += vGrayscale * pSobelHorizontal[n];
+			vEdgesVertical += vGrayscale * pSobelVertical[n];
+		}
+
+		vec3 vEdges = abs(vEdgesHorizontal) + abs(vEdgesVertical);
+		vEdges = smoothstep(0.5 - uEdgeColorAmount, 1.0 - uEdgeColorAmount, vEdges);
+
+		float vOutlines = clamp(length(vEdges) * 0.5773, 0.0, 1.0);
+
+		vec3 vGaussianBlur;
+		for (int k = 0; k < 13; k++) {
+			vGaussianBlur += omw_GetLastShader(omw_TexCoord + vOffsets[5] * float(k - 6)).rgb * pGaussianWeights[k];
+			vGaussianBlur += omw_GetLastShader(omw_TexCoord + vOffsets[7] * float(k - 6)).rgb * pGaussianWeights[k];
+		}
+
+		vec3 vBlurredScene = mix(vGaussianBlur, vScene, uDetailGrade);
+
+		vGrayscale = vec3(dot(vBlurredScene, vec3(0.2126, 0.7152, 0.0722)));
+		vec3 vDesaturatedScene = mix(vBlurredScene, vGrayscale, 0.4 * uDesaturationGrade);
+
+		vec3 vWatercolor = mix(vDesaturatedScene, vScene, vOutlines * uEdgeColorStrength);
+
+		if (uSkyDisabled) {
+			vec3 vSkyUnmasked = vWatercolor;
+			vWatercolor = mix(vSkyUnmasked, vScene, vSkyMask);
+		}
+
+		if (uWaterDisabled) {
+			vec3 vWaterUnmasked = vWatercolor;
+			vWatercolor = mix(vWaterUnmasked, vScene, vWaterMask);
+		}
+
+		if (uShaderEnabled) {
+			omw_FragColor = vec4(vWatercolor, 1.0);
+		}
+		else {
+			omw_FragColor = vec4(vScene, 1.0);
+		}
+	}
+}
+
+technique {
+	description = "Watercolored: change the style of Morrowind to a hand-painted watercolor picture. Based on the MGE XE shader by Kamikaze1 (which is based in the MGE shader by zilav).";
+	passes = main;
+	version = "1.0";
+	author = "Netchiman";
+}

@@ -1,0 +1,111 @@
+
+uniform_bool uShaderEnabled {
+	default = true;
+	description ="Enable MWToon shader.";
+	display_name = "Enable Shader";
+}
+
+uniform_float uColorDepth {
+	default = 10.0;
+	min = 5.0;
+	max = 15.0;
+	step = 1.0;
+	description = "Controls the color gradient. Higher values increases the smoothness of the colors.";
+	display_name = "Color Depth";
+}
+
+uniform_float uDistanceThreshold {
+	default = 0.5;
+	min = 0.05;
+	max = 1.0;
+	step = 0.05;
+	description = "Controls the distance from the camera up to which edges are highlighted. Higher values increase the distance at which black edges appear.";
+	display_name = "Edge Outlining Distance";
+}
+
+uniform_float uEdgeThreshold {
+	default = 0.5;
+	min = 0.2;
+	max = 0.9;
+	step = 0.05;
+	description = "Controls how aggressively edges are highlighted. Lower values increases the amount of black edges.";
+	display_name = "Edge Outlining Threshold";
+}
+
+fragment lineardepth {
+	omw_In vec2 omw_TexCoord;
+
+	void main() {
+		vec3 vLinearDepth = vec3((omw_GetLinearDepth(omw_TexCoord) - omw.near) / (omw.far - omw.near));
+
+		vLinearDepth.g = clamp(vLinearDepth.g, 0.0, ((1024.0 - omw.near) / (omw.far - omw.near))) / ((1024.0 - omw.near) / (omw.far - omw.near));
+		vLinearDepth.b = clamp(vLinearDepth.g, 0.0, ((64.0 - omw.near) / (omw.far - omw.near))) / ((64.0 - omw.near) / (omw.far - omw.near));
+
+		omw_FragColor = vec4(vLinearDepth, 1.0);
+	}
+}
+
+fragment main {
+	omw_In vec2 omw_TexCoord;
+
+	void main() {
+		vec3 vScene = omw_GetLastShader(omw_TexCoord).rgb;
+
+		float pKernel[9] = float[] (
+			1.0, 1.0, 1.0,
+			1.0, -8.0, 1.0,
+			1.0, 1.0, 1.0
+		);
+
+		vec2 vOffsets[9] = vec2[] (
+			vec2(-omw.rcpResolution.x, -omw.rcpResolution.y),
+			vec2(-omw.rcpResolution.x, 0.0),
+			vec2(-omw.rcpResolution.x, omw.rcpResolution.y),
+			vec2(0.0, -omw.rcpResolution.y),
+			vec2(0.0, 0.0),
+			vec2(0.0, omw.rcpResolution.y),
+			vec2(omw.rcpResolution.x, -omw.rcpResolution.y),
+			vec2(omw.rcpResolution.x, 0.0),
+			vec2(omw.rcpResolution.x, omw.rcpResolution.y)
+		);
+
+		float vNormalEdges;
+		float vDepthEdges;
+		for (int n = 0; n < 9; n++) {
+			vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).r) * pKernel[n];
+			vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).g) * pKernel[n];
+			vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).b) * pKernel[n];
+
+			vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).r * pKernel[n];
+			vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).g * pKernel[n];
+			vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).b * pKernel[n];
+		}
+
+		vNormalEdges = smoothstep(uEdgeThreshold, 0.95, vNormalEdges);
+		vNormalEdges *= step(64.0, omw_GetLinearDepth(omw_TexCoord));
+
+		vDepthEdges = smoothstep(0.05, (0.25 * uEdgeThreshold), vDepthEdges);
+
+		float vEdges = max(vNormalEdges, vDepthEdges);
+
+		float vInverseDepth = 1.0 - omw_GetLastPass(omw_TexCoord).r;
+		vEdges *= 4.0 * vInverseDepth - 3.0 + uDistanceThreshold;
+		vEdges = clamp(vEdges, 0.0, 1.0);
+
+		if (uShaderEnabled) {
+			vScene = floor(vScene * uColorDepth * 5.0) / (uColorDepth * 5.0);
+			omw_FragColor = vec4(mix(vScene, vec3(0.0), vEdges), 1.0);
+		}
+		else {
+			omw_FragColor = vec4(vScene, 1.0);
+		}
+	}
+}
+
+technique {
+	description = "MWToon: change the style of Morrowind to a hand-drawn comic book.";
+	passes = lineardepth, main;
+	version = "1.0";
+	author = "Netchiman";
+	pass_normals = true;
+}
