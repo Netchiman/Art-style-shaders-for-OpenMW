@@ -20,5 +20,6 @@ Based on the [MGE XE Watercolor Shader](https://www.nexusmods.com/morrowind/mods
 4. Enable or disable the shaders as required
 
 Further instructions can be found:
+
 https://modding-openmw.com/tips/custom-shaders/#installing
 https://openmw.readthedocs.io/en/latest/reference/modding/mod-install.html#install
