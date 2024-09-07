@@ -44,6 +44,15 @@ uniform_float uEdgeColorAmount {
 	display_name = "Edge Coloring Amount";
 }
 
+uniform_float uEdgeColorThickness {
+	default = 1.0;
+	min = 1.0;
+	max = 5.0;
+	step = 1.0;
+	description = "Controls the thickness of edge saturation. Higher values increase the thickness of saturated edges.";
+	display_name = "Edge Coloring Thickness";
+}
+
 uniform_float uEdgeColorStrength {
 	default = 2.5;
 	min = 1.0;
@@ -87,26 +96,25 @@ fragment main {
 			0.001108
 		);
 
-		float vSkyMask = step(omw.far * 0.9999, omw_GetLinearDepth(omw_TexCoord));
+		float vSkyMask = smoothstep(omw.far * 0.95, omw.far * 0.9999, omw_GetLinearDepth(omw_TexCoord));
+		// float vSkyMask = step(omw.far * 0.9999, omw_GetLinearDepth(omw_TexCoord));
 
-		float vWaterMask;
+
+		float vWaterMask = smoothstep(omw.waterHeight * 0.99, omw.waterHeight * 1.01, omw_GetWorldPosFromUV(omw_TexCoord).z);
 		if (omw.isUnderwater) {
-			vWaterMask = step(omw.waterHeight * 1.01, omw_GetWorldPosFromUV(omw_TexCoord).z);
-		}
-		else {
-			vWaterMask = 1.0 - step(omw.waterHeight * 0.99, omw_GetWorldPosFromUV(omw_TexCoord).z);
+			vWaterMask = 1.0 - vWaterMask;
 		}
 
 		vec2 vOffsets[9] = vec2[] (
-			vec2(-omw.rcpResolution.x, -omw.rcpResolution.y),
-			vec2(-omw.rcpResolution.x, 0.0),
-			vec2(-omw.rcpResolution.x, omw.rcpResolution.y),
-			vec2(0.0, -omw.rcpResolution.y),
+			vec2((-uEdgeColorThickness * omw.rcpResolution.x), (-uEdgeColorThickness * omw.rcpResolution.y)),
+			vec2((-uEdgeColorThickness * omw.rcpResolution.x), 0.0),
+			vec2((-uEdgeColorThickness * omw.rcpResolution.x), (uEdgeColorThickness * omw.rcpResolution.y)),
+			vec2(0.0, (-uEdgeColorThickness * omw.rcpResolution.y)),
 			vec2(0.0, 0.0),
-			vec2(0.0, omw.rcpResolution.y),
-			vec2(omw.rcpResolution.x, -omw.rcpResolution.y),
-			vec2(omw.rcpResolution.x, 0.0),
-			vec2(omw.rcpResolution.x, omw.rcpResolution.y)
+			vec2(0.0, (uEdgeColorThickness * omw.rcpResolution.y)),
+			vec2((uEdgeColorThickness * omw.rcpResolution.x), (-uEdgeColorThickness * omw.rcpResolution.y)),
+			vec2((uEdgeColorThickness * omw.rcpResolution.x), 0.0),
+			vec2((uEdgeColorThickness * omw.rcpResolution.x), (uEdgeColorThickness * omw.rcpResolution.y))
 		);
 		vec3 vGrayscale;
 		vec3 vEdgesHorizontal;
@@ -158,6 +166,6 @@ fragment main {
 technique {
 	description = "Watercolored: change the style of Morrowind to a hand-painted watercolor picture. Based on the MGE XE shader by Kamikaze1 (which is based in the MGE shader by zilav).";
 	passes = main;
-	version = "1.0";
+	version = "1.1";
 	author = "Netchiman";
 }
