@@ -97,8 +97,6 @@ fragment main {
 		);
 
 		float vSkyMask = smoothstep(omw.far * 0.95, omw.far * 0.9999, omw_GetLinearDepth(omw_TexCoord));
-		// float vSkyMask = step(omw.far * 0.9999, omw_GetLinearDepth(omw_TexCoord));
-
 
 		float vWaterMask = smoothstep(omw.waterHeight * 0.99, omw.waterHeight * 1.01, omw_GetWorldPosFromUV(omw_TexCoord).z);
 		if (omw.isUnderwater) {
