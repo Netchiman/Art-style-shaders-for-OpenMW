@@ -32,6 +32,15 @@ uniform_float uEdgeThreshold {
 	display_name = "Edge Outlining Threshold";
 }
 
+uniform_float uEdgeThickness {
+	default = 1.0;
+	min = 1.0;
+	max = 3.0;
+	step = 1.0;
+	description = "Controls the thickness of edge highlights. Higher values increases the thickness of black edges.";
+	display_name = "Edge Outlining Thickness";
+}
+
 fragment lineardepth {
 	omw_In vec2 omw_TexCoord;
 
@@ -57,16 +66,29 @@ fragment main {
 			1.0, 1.0, 1.0
 		);
 
+		float pFogDensity[10] = float[] (
+			1.0,	//0.02,
+			2.5,	//0.05,
+			7.5,	//0.15,
+			3.5,	//0.07,
+			4.0,	//0.08,
+			4.0,	//0.08,
+			3.0,	//0.06,
+			2.0,	//0.04,
+			3.0,	//0.06,
+			4.0	//0.08
+		);
+
 		vec2 vOffsets[9] = vec2[] (
-			vec2(-omw.rcpResolution.x, -omw.rcpResolution.y),
-			vec2(-omw.rcpResolution.x, 0.0),
-			vec2(-omw.rcpResolution.x, omw.rcpResolution.y),
-			vec2(0.0, -omw.rcpResolution.y),
+			vec2((-uEdgeThickness * omw.rcpResolution.x), (-uEdgeThickness * omw.rcpResolution.y)),
+			vec2((-uEdgeThickness * omw.rcpResolution.x), 0.0),
+			vec2((-uEdgeThickness * omw.rcpResolution.x), (uEdgeThickness * omw.rcpResolution.y)),
+			vec2(0.0, (-uEdgeThickness * omw.rcpResolution.y)),
 			vec2(0.0, 0.0),
-			vec2(0.0, omw.rcpResolution.y),
-			vec2(omw.rcpResolution.x, -omw.rcpResolution.y),
-			vec2(omw.rcpResolution.x, 0.0),
-			vec2(omw.rcpResolution.x, omw.rcpResolution.y)
+			vec2(0.0, (uEdgeThickness * omw.rcpResolution.y)),
+			vec2((uEdgeThickness * omw.rcpResolution.x), (-uEdgeThickness * omw.rcpResolution.y)),
+			vec2((uEdgeThickness * omw.rcpResolution.x), 0.0),
+			vec2((uEdgeThickness * omw.rcpResolution.x), (uEdgeThickness * omw.rcpResolution.y))
 		);
 
 		float vNormalEdges;
@@ -89,7 +111,11 @@ fragment main {
 		float vEdges = max(vNormalEdges, vDepthEdges);
 
 		float vInverseDepth = 1.0 - omw_GetLastPass(omw_TexCoord).r;
-		vEdges *= 4.0 * vInverseDepth - 3.0 + uDistanceThreshold;
+
+		float vFogObfuscation = mix(pFogDensity[omw.weatherID], pFogDensity[omw.nextWeatherID], omw.weatherTransition);
+		vFogObfuscation *= omw_EstimateFogCoverageFromUV(omw_TexCoord);
+
+		vEdges *= (3.0 + vFogObfuscation) * vInverseDepth - 2.0 - vFogObfuscation + uDistanceThreshold;
 		vEdges = clamp(vEdges, 0.0, 1.0);
 
 		if (uShaderEnabled) {
@@ -105,7 +131,7 @@ fragment main {
 technique {
 	description = "MWToon: change the style of Morrowind to a hand-drawn comic book.";
 	passes = lineardepth, main;
-	version = "1.0";
+	version = "1.1";
 	author = "Netchiman";
 	pass_normals = true;
 }
