@@ -1,8 +1,25 @@
 
 uniform_bool uShaderEnabled {
+	header = "General";
 	default = true;
 	description ="Enable MWToon shader.";
 	display_name = "Enable Shader";
+}
+
+uniform_bool uFilterEnabled {
+	header = "Colors";
+	default = true;
+	description ="Enable edge-preserving smoothing.";
+	display_name = "Enable Bilateral Filter";
+}
+
+uniform_float uFilterSigma {
+	default = 0.25;
+	min = 0.05;
+	max = 0.60;
+	step = 0.05;
+	description = "Controls the Bilateral Filter. Higher values increases the blurriness.";
+	display_name = "Bilateral Filter Strength";
 }
 
 uniform_bool uColorEnabled {
@@ -21,6 +38,7 @@ uniform_float uColorDepth {
 }
 
 uniform_float uDistanceThreshold {
+	header = "Outlines";
 	default = 0.5;
 	min = 0.05;
 	max = 1.0;
@@ -66,6 +84,14 @@ fragment main {
 	void main() {
 		vec3 vScene = omw_GetLastShader(omw_TexCoord).rgb;
 
+		float pWeight[5] = float[] (
+			0.000053991, 
+			0.000241969, 
+			0.000398940, 
+			0.000241969, 
+			0.000053991
+		);
+
 		float pKernel[9] = float[] (
 			1.0, 1.0, 1.0,
 			1.0, -8.0, 1.0,
@@ -85,48 +111,69 @@ fragment main {
 			4.0	//0.08
 		);
 
-		float vEdgeThickness = min(ceil((3233.7 * uDistanceThreshold + 862.3) * uEdgeThickness / omw_GetLinearDepth(omw_TexCoord)), uEdgeThickness);
-
-		vec2 vOffsets[9] = vec2[] (
-			vec2((-vEdgeThickness * omw.rcpResolution.x), (-vEdgeThickness * omw.rcpResolution.y)),
-			vec2((-vEdgeThickness * omw.rcpResolution.x), 0.0),
-			vec2((-vEdgeThickness * omw.rcpResolution.x), (vEdgeThickness * omw.rcpResolution.y)),
-			vec2(0.0, (-vEdgeThickness * omw.rcpResolution.y)),
-			vec2(0.0, 0.0),
-			vec2(0.0, (vEdgeThickness * omw.rcpResolution.y)),
-			vec2((vEdgeThickness * omw.rcpResolution.x), (-vEdgeThickness * omw.rcpResolution.y)),
-			vec2((vEdgeThickness * omw.rcpResolution.x), 0.0),
-			vec2((vEdgeThickness * omw.rcpResolution.x), (vEdgeThickness * omw.rcpResolution.y))
-		);
-
-		float vNormalEdges;
-		float vDepthEdges;
-		for (int n = 0; n < 9; n++) {
-			vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).r) * pKernel[n];
-			vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).g) * pKernel[n];
-			vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).b) * pKernel[n];
-
-			vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).r * pKernel[n];
-			vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).g * pKernel[n];
-			vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).b * pKernel[n];
-		}
-
-		vNormalEdges = smoothstep(uEdgeThreshold, 0.95, vNormalEdges);
-
-		vDepthEdges = smoothstep(0.05, (0.25 * uEdgeThreshold), vDepthEdges);
-
-		float vEdges = max(vNormalEdges, vDepthEdges);
-
-		float vFogObfuscation = mix(pFogDensity[omw.weatherID], pFogDensity[omw.nextWeatherID], omw.weatherTransition);
-		vFogObfuscation *= omw_EstimateFogCoverageFromUV(omw_TexCoord);
-
-		vEdges *= (3.0 + vFogObfuscation) * (1.0 - omw_GetLastPass(omw_TexCoord).r) - 2.0 - vFogObfuscation + uDistanceThreshold;
-		vEdges = clamp(vEdges, 0.0, 1.0);
-
 		if (uShaderEnabled) {
-			if (uColorEnabled) {
-				vScene = floor(vScene * uColorDepth * 5.0) / (uColorDepth * 5.0);
+
+			float vEdgeThickness = min(ceil((3233.7 * uDistanceThreshold + 862.3) * uEdgeThickness / omw_GetLinearDepth(omw_TexCoord)), uEdgeThickness);
+
+			vec2 vOffsets[9] = vec2[] (
+				vec2((-vEdgeThickness * omw.rcpResolution.x), (-vEdgeThickness * omw.rcpResolution.y)),
+				vec2((-vEdgeThickness * omw.rcpResolution.x), 0.0),
+				vec2((-vEdgeThickness * omw.rcpResolution.x), (vEdgeThickness * omw.rcpResolution.y)),
+				vec2(0.0, (-vEdgeThickness * omw.rcpResolution.y)),
+				vec2(0.0, 0.0),
+				vec2(0.0, (vEdgeThickness * omw.rcpResolution.y)),
+				vec2((vEdgeThickness * omw.rcpResolution.x), (-vEdgeThickness * omw.rcpResolution.y)),
+				vec2((vEdgeThickness * omw.rcpResolution.x), 0.0),
+				vec2((vEdgeThickness * omw.rcpResolution.x), (vEdgeThickness * omw.rcpResolution.y))
+			);
+
+			float vNormalEdges;
+			float vDepthEdges;
+			for (int n = 0; n < 9; n++) {
+				vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).r) * pKernel[n];
+				vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).g) * pKernel[n];
+				vNormalEdges += abs(omw_GetNormals(omw_TexCoord + vOffsets[n]).b) * pKernel[n];
+
+				vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).r * pKernel[n];
+				vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).g * pKernel[n];
+				vDepthEdges += omw_GetLastPass(omw_TexCoord + vOffsets[n]).b * pKernel[n];
 			}
+
+			vNormalEdges = smoothstep(uEdgeThreshold, 0.95, vNormalEdges);
+
+			vDepthEdges = smoothstep(0.05, (0.25 * uEdgeThreshold), vDepthEdges);
+
+			float vEdges = max(vNormalEdges, vDepthEdges);
+
+			float vFogObfuscation = mix(pFogDensity[omw.weatherID], pFogDensity[omw.nextWeatherID], omw.weatherTransition);
+			vFogObfuscation *= omw_EstimateFogCoverageFromUV(omw_TexCoord);
+
+			vEdges *= (3.0 + vFogObfuscation) * (1.0 - omw_GetLastPass(omw_TexCoord).r) - 2.0 - vFogObfuscation + uDistanceThreshold;
+			vEdges = clamp(vEdges, 0.0, 1.0);
+
+			vec3 vRangeDiff;
+			float vRangeFactor;
+			float vRangeSum;
+			vec3 vFiltered;
+			for (int i = 0; i < 5; ++i) {
+				for (int j = 0; j < 5; ++j) {
+					vRangeDiff = omw_GetLastShader(omw_TexCoord + vec2(float(i - 2), float(j - 2)) * omw.rcpResolution).rgb;
+
+					vRangeFactor = vRangeFactor = exp(-0.5 * dot(vRangeDiff - vScene, vRangeDiff - vScene) / (uFilterSigma * uFilterSigma)) * pWeight[i] * pWeight[j];
+
+					vRangeSum += vRangeFactor;
+					vFiltered += vRangeFactor * vRangeDiff;
+				}
+			}
+
+			if (uFilterEnabled) {
+				vScene = vFiltered / vRangeSum;
+			}
+
+			if (uColorEnabled) {
+				vScene = ceil(vScene * uColorDepth * 5.0) / (uColorDepth * 5.0);
+			}
+
 			omw_FragColor = vec4(mix(vScene, vec3(0.0), vEdges), 1.0);
 		}
 		else {
@@ -138,7 +185,8 @@ fragment main {
 technique {
 	description = "MWToon: change the style of Morrowind to a hand-drawn comic book.";
 	passes = lineardepth, main;
-	version = "1.2";
+	version = "1.3";
 	author = "Netchiman";
 	pass_normals = true;
 }
+
