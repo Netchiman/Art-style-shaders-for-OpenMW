@@ -58,27 +58,27 @@ float calcSpecIntensity(vec3 viewNormal, vec3 viewDir, float shininess, vec3 lig
         specularLight = vec3(0.0);
     #endif
 
-    for (int i = @startLight; i < @endLight; ++i)
+    for (int i = @startLight; i < PointLightCount; ++i)
     {
-        #if @lightingMethodUBO
-            int lightIndex = PointLightIndex[i];
-        #else
-            int lightIndex = i;
-        #endif
+    #if @lightingMethodUBO
+        int lightIndex = PointLightIndex[i];
+    #else
+        int lightIndex = i;
+    #endif
         vec3 lightPos = lcalcPosition(lightIndex) - viewPos;
         float lightDistance = length(lightPos);
 
-        // cull non-FFP point lighting by radius, light is guaranteed to not fall outside this bound with our cutoff
-        #if !@classicFalloff && !@lightingMethodFFP
-            if (lightDistance > lcalcRadius(lightIndex) * 2.0)
-                continue;
-        #endif
+    // cull point lighting by radius, light is guaranteed to not fall outside this bound with our cutoff
+    #if !@classicFalloff
+        if (lightDistance > lcalcRadius(lightIndex) * 2.0)
+            continue;
+    #endif
 
         vec3 lightDir = lightPos / lightDistance;
 
         float illumination = lcalcIllumination(lightIndex, lightDistance);
-        diffuseLight += lcalcDiffuse(lightIndex) * calcLambert(viewNormal, lightDir, viewDir, ambientLight) * illumination;
         ambientLight += lcalcAmbient(lightIndex) * illumination;
+        diffuseLight += lcalcDiffuse(lightIndex) * calcLambert(viewNormal, lightDir, viewDir, ambientLight) * illumination;
         specularLight += lcalcSpecular(lightIndex).xyz * calcSpecIntensity(viewNormal, viewDir, shininess, lightDir) * illumination;
     }
 }
